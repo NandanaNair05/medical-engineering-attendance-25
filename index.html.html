@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Medical Engineering 2nd Year Attendance</title>
+<style>
+/* 🔹 Body & fonts */
+body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background: #f0f2f5;
+    margin: 0;
+    padding: 20px;
+}
+
+/* 🔹 Header */
+h1 {
+    text-align: center;
+    font-size: 28px;
+    margin-bottom: 20px;
+    background: linear-gradient(to right, #007BFF, #00C6FF);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+}
+
+/* 🔹 Search div */
+#searchDiv {
+    text-align:center;
+    margin-bottom:20px;
+}
+
+/* 🔹 Search inputs */
+#search, #dateSearch {
+    padding: 10px 15px;
+    width: 250px;
+    border-radius: 8px;
+    border: 1px solid #ccc;
+    font-size: 16px;
+    margin: 5px;
+    transition: all 0.2s ease;
+}
+#search:focus, #dateSearch:focus {
+    outline: none;
+    border-color: #007BFF;
+    box-shadow: 0 0 5px #007BFF;
+}
+
+/* 🔹 Buttons */
+#searchBtn, #downloadBtn {
+    padding: 10px 20px;
+    margin-left: 5px;
+    background: linear-gradient(90deg, #007BFF, #00C6FF);
+    border: none;
+    border-radius: 8px;
+    color: white;
+    font-weight: bold;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+#searchBtn:hover, #downloadBtn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+}
+
+/* 🔹 Table */
+table {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+    border-radius: 10px;
+    overflow: hidden;
+    box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+    margin-top: 10px;
+}
+th, td {
+    padding: 12px 15px;
+    text-align: left;
+    font-size: 14px;
+}
+th {
+    background: linear-gradient(90deg, #007BFF, #00C6FF);
+    color: #fff;
+    position: sticky;
+    top: 0;
+    z-index: 2;
+}
+tr:nth-child(even) {
+    background-color: #f9faff;
+}
+tr:hover {
+    background-color: #e6f0ff;
+    transition: background 0.2s ease;
+}
+</style>
+</head>
+<body>
+
+<h1>
+Medical Engineering 2nd Year<br>
+Student Attendance Portal
+</h1>
+
+<div id="searchDiv">
+    <input type="text" id="search" placeholder="Enter Unique ID (e.g., E0524002)">
+    <input type="text" id="dateSearch" placeholder="Enter Date (e.g., 14.10.2025)">
+    <button id="searchBtn">Search</button>
+    <button id="downloadBtn">Download CSV</button>
+</div>
+
+<table id="attendanceTable">
+    <thead>
+        <tr>
+            <th>Student Name (ID)</th>
+            <th>Absent Date</th>
+            <th>Absent Subjects</th>
+        </tr>
+    </thead>
+    <tbody></tbody>
+</table>
+
+<script>
+// 🔹 Timetable
+const timetable = {
+  Monday:    ['Micro Processor', 'FAP', 'Python Lab', 'Python Lab', 'PCD', 'PCD', 'CS'],
+  Tuesday:   ['PCP', 'PCP', 'DAA Lab', 'DAA Lab', 'Maths', 'Signals and Systems', 'PCD'],
+  Wednesday: ['DAA', 'Signals and Systems', 'Micro Processor', 'Club', 'Maths', 'CS', 'FAP'],
+  Thursday:  ['PCP', 'PCP', 'Micro Processor', 'FAP', 'Maths', 'Maths', 'DAA'],
+  Friday:    ['CS', 'Signals and Systems', 'Arduino', 'Arduino', 'DAA', 'Micro Processor Lab', 'Micro Processor Lab']
+};
+
+// 🔹 Google Apps Script Web App URL
+const sheetUrl = 'https://script.google.com/macros/s/AKfycbzVIihHuHAfL-QDii-c5iYp4J9a_bvNto0hLkMqM_43amb9y5iBgj1WZV5CCUNlZyTeoA/exec';
+
+// 🔹 Convert date dd.mm.yy → JS Date
+function parseDate(dateStr) {
+    const parts = dateStr.split('.');
+    if(parts.length !== 3) return null;
+    const day = parseInt(parts[0],10);
+    const month = parseInt(parts[1],10) - 1;
+    const year = 2000 + parseInt(parts[2],10);
+    return new Date(year, month, day);
+}
+
+// 🔹 Get weekday
+function getWeekday(date) {
+    const days = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+    return days[date.getDay()];
+}
+
+// 🔹 Fetch JSON from Apps Script
+async function fetchData() {
+    const res = await fetch(sheetUrl);
+    const data = await res.json();
+    return data.map(row => [
+        row['DATES'],
+        row['Unique ID'],
+        row['Name'],
+        row['HOUR 1'],
+        row['HOUR 2'],
+        row['HOUR 3'],
+        row['HOUR 4'],
+        row['HOUR 5'],
+        row['HOUR 6'],
+        row['HOUR 7']
+    ]);
+}
+
+// 🔹 Process attendance
+function processAttendance(data) {
+    const attendance = {};
+    for(let i=0;i<data.length;i++){
+        let row = data[i];
+        if(!row || row.length < 3) continue;
+        row = row.map(cell => cell ? cell.toString().trim() : '');
+        const [dateRaw, idRaw, nameRaw, ...hoursRaw] = row;
+        if(!dateRaw || !idRaw) continue;
+
+        const dateObj = parseDate(dateRaw);
+        if(!dateObj) continue;
+        const date = dateObj.toISOString().split('T')[0];
+
+        const id = idRaw.toUpperCase();
+        const name = nameRaw;
+
+        if(!attendance[id]) attendance[id] = {name, absents: []};
+
+        const weekday = getWeekday(dateObj);
+        const absentSubjects = [];
+        hoursRaw.forEach((h, idx)=>{
+            if(h.toUpperCase() === 'A'){
+                const subjectName = timetable[weekday]?.[idx] || `Hour ${idx+1}`;
+                absentSubjects.push(`${subjectName} (hour ${idx+1})`);
+            }
+        });
+
+        if(absentSubjects.length){
+            attendance[id].absents.push({date, subjects: absentSubjects});
+        }
+    }
+    return attendance;
+}
+
+// 🔹 Render table (with filters)
+function renderTable(attendance, filterId='', filterDate=''){
+    const tbody = document.querySelector('#attendanceTable tbody');
+    tbody.innerHTML = '';
+
+    Object.keys(attendance).forEach(id=>{
+        if(filterId && !id.includes(filterId.toUpperCase())) return;
+        const student = attendance[id];
+
+        student.absents.forEach((a, index)=>{
+            const formattedDate = new Date(a.date).toLocaleDateString('en-GB').split('/').join('.');
+            if(filterDate && !formattedDate.includes(filterDate)) return;
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                ${index === 0 ? `<td rowspan="${student.absents.length}">${student.name} (${id})</td>` : ''}
+                <td>${formattedDate}</td>
+                <td>${a.subjects.join(', ')}</td>
+            `;
+            tbody.appendChild(tr);
+        });
+    });
+}
+
+// 🔹 Initialize
+let attendance = {};
+fetchData().then(data=>{
+    attendance = processAttendance(data);
+    renderTable(attendance);
+
+    document.getElementById('searchBtn').addEventListener('click', ()=>{
+        const idValue = document.getElementById('search').value.trim().toUpperCase();
+        const dateValue = document.getElementById('dateSearch').value.trim();
+        renderTable(attendance, idValue, dateValue);
+    });
+
+    // 🔹 Download CSV
+    document.getElementById('downloadBtn').addEventListener('click', ()=>{
+        let csv = 'Student Name,Absent Date,Absent Subjects\n';
+        const idValue = document.getElementById('search').value.trim().toUpperCase();
+        const dateValue = document.getElementById('dateSearch').value.trim();
+
+        Object.keys(attendance).forEach(id=>{
+            const student = attendance[id];
+            if(idValue && !id.includes(idValue)) return;
+            student.absents.forEach(a=>{
+                const formattedDate = new Date(a.date).toLocaleDateString('en-GB').split('/').join('.');
+                if(dateValue && !formattedDate.includes(dateValue)) return;
+                csv += `"${student.name} (${id})","${formattedDate}","${a.subjects.join(', ')}"\n`;
+            });
+        });
+
+        const blob = new Blob([csv], {type: 'text/csv'});
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(blob);
+        link.download = 'attendance.csv';
+        link.click();
+    });
+});
+</script>
+
+</body>
+</html>
